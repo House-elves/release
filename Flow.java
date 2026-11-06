@@ -77,6 +77,12 @@ final class Flow {
 
     /** What the tab says about it, and where it is. */
     static void say(ObjectNode r, String stage, String state, String say) {
+        // What happened, for the tab's timeline: each new thing it says, once, with when.
+        if (!say.equals(r.path("say").asText()) && !say.startsWith("CI is running")) {
+            ArrayNode events = r.withArray("events");
+            events.addObject().put("at", Instant.now().toString()).put("text", say);
+            while (events.size() > 40) events.remove(0);
+        }
         r.put("stage", stage).put("state", state).put("say", say);
         System.out.println(r.path("repo").asText() + " " + r.path("version").asText() + ": " + say);
     }
@@ -235,7 +241,7 @@ final class Flow {
                 pullRequest(number: $number) {
                   state merged mergedAt headRefOid mergeStateStatus reviewDecision createdAt
                   commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { totalCount nodes {
-                    __typename ... on CheckRun { name conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } } }
+                    __typename ... on CheckRun { name status conclusion detailsUrl startedAt completedAt } ... on StatusContext { context state targetUrl createdAt } } } } } } }
                 }
               }
             }""";
@@ -276,9 +282,19 @@ final class Flow {
         JsonNode rollup = pr.path("commits").path("nodes").path(0).path("commit").path("statusCheckRollup");
         JsonNode contexts = rollup.path("contexts").path("nodes");
         int running = 0, failed = 0, total = 0;
+        ArrayNode checks = r.putArray("checks");
         for (JsonNode c : contexts) {
             total++;
             boolean run = c.path("__typename").asText().equals("CheckRun");
+            // Each check as the tab shows it: running, passed, failed, or ignored (cancelled or skipped).
+            String raw = run ? (c.path("status").asText().equals("COMPLETED") ? c.path("conclusion").asText("") : "RUNNING") : c.path("state").asText("");
+            String shown = List.of("RUNNING", "PENDING", "EXPECTED", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED").contains(raw) ? "running"
+                    : List.of("SUCCESS", "NEUTRAL").contains(raw) ? "passed" : FAILED.contains(raw) ? "failed" : "ignored";
+            ObjectNode one = checks.addObject().put("name", run ? c.path("name").asText() : c.path("context").asText()).put("state", shown)
+                    .put("url", run ? c.path("detailsUrl").asText("") : c.path("targetUrl").asText(""));
+            String began = run ? c.path("startedAt").asText("") : c.path("createdAt").asText("");
+            if (!began.isEmpty()) one.put("startedAt", began);
+            if (run && !c.path("completedAt").asText("").isEmpty()) one.put("completedAt", c.path("completedAt").asText());
             if (run ? !c.path("status").asText().equals("COMPLETED") : List.of("PENDING", "EXPECTED").contains(c.path("state").asText())) running++;
             else if (FAILED.contains(run ? c.path("conclusion").asText("") : c.path("state").asText(""))) failed++;
         }
@@ -390,6 +406,7 @@ final class Flow {
         runs.putObject(which).put("id", found.path("id").asLong()).put("url", found.path("html_url").asText())
                 .put("status", found.path("status").asText()).put("conclusion", found.path("conclusion").asText(""))
                 .put("createdAt", found.path("created_at").asText());
+        jobs(gh, repo, found.path("id").asLong(), runs.with(which));
         if (!found.path("status").asText().equals("completed")) {
             say(r, which, "running", which.equals("prepare") ? "Preparing the release: tagging " + r.path("version").asText() + "."
                     : "Releasing " + r.path("version").asText() + ": building and deploying.");
@@ -403,6 +420,30 @@ final class Flow {
         if (which.equals("prepare") && r.has("releaseWorkflow")) say(r, "release", "running", "Tagged. Waiting for the release workflow.");
         else if (r.has("groupId")) say(r, "central", "running", "Released. Waiting for it on Maven Central.");
         else finished(r);
+    }
+
+    /** A workflow run's jobs, and the step each is on: how far along it is, for the tab. */
+    static void jobs(Gh gh, String repo, long run, ObjectNode into) {
+        try {
+            ArrayNode out = into.putArray("jobs");
+            for (JsonNode j : gh.get("/repos/" + repo + "/actions/runs/" + run + "/jobs?per_page=30").path("jobs")) {
+                JsonNode steps = j.path("steps");
+                int done = 0;
+                String now = null;
+                for (JsonNode s : steps) {
+                    if (s.path("status").asText().equals("completed")) done++;
+                    else if (now == null && s.path("status").asText().equals("in_progress")) now = s.path("name").asText();
+                }
+                ObjectNode o = out.addObject().put("name", j.path("name").asText()).put("status", j.path("status").asText())
+                        .put("conclusion", j.path("conclusion").asText("")).put("url", j.path("html_url").asText(""))
+                        .put("steps", steps.size()).put("done", done);
+                if (now != null) o.put("step", now);
+                if (!j.path("started_at").asText("").isEmpty()) o.put("startedAt", j.path("started_at").asText());
+                if (!j.path("completed_at").asText("").isEmpty()) o.put("completedAt", j.path("completed_at").asText());
+            }
+        } catch (IOException e) {
+            System.out.println("Couldn't read the jobs of run " + run + ": " + e.getMessage());
+        }
     }
 
     /** On Maven Central: the version's folder of the project's root artifact. */

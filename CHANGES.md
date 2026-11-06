@@ -3,6 +3,13 @@
 What changed for you in each version of Releases, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.4.0
+
+- New: a release in progress shows more as it goes: each CI check (passed, failed, running and for how long, or
+  cancelled and not counted), each job of the prepare and release workflows with the step it's on, and what happened
+  when.
+- Fixed: a release whose checks had all finished still said CI was running, and didn't merge.
+
 ## 0.3.0
 
 - New: a major release keeps the line it leaves in a branch of its own first, like 2.x before 3.0.0, made from the

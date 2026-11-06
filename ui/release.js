@@ -104,6 +104,19 @@ class ReleaseTab extends LitElement {
         .steps .now { color: var(--ink); font-weight: 500; }
         .steps .now i { background: var(--accent); }
         .steps .bad i { background: var(--bad); }
+        ul.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 13.5px; }
+        ul.items li { display: flex; gap: 8px; align-items: baseline; padding: 0; border: 0; grid-template-columns: none; }
+        ul.items li:hover { background: none; }
+        ul.items li + li { border-top: 0; }
+        ul.items .m { width: 16px; text-align: center; flex: none; }
+        ul.items li.passed .m { color: var(--good, #2f855a); }
+        ul.items li.failed .m, ul.items li.failed a { color: var(--bad); }
+        ul.items li.ignored { color: var(--muted); }
+        ul.items a { color: var(--ink); }
+        details.timeline { font-size: 13px; color: var(--muted); }
+        details.timeline summary { cursor: pointer; color: var(--accent); }
+        details.timeline ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+        details.timeline time { font-variant-numeric: tabular-nums; color: var(--ink); margin-right: 6px; }
         .row-error { grid-column: 1 / -1; margin: 4px 0 0; font-size: 13.5px; }
         .empty { color: var(--muted); padding: 16px 18px; margin: 0; font-size: 14px; }
         .notice { padding: 18px 20px; display: grid; gap: 8px; max-width: 46rem; }
@@ -275,6 +288,7 @@ class ReleaseTab extends LitElement {
                 return html`<span class=${cls}><i></i>${link ? html`<a href=${link} target="_blank" rel="noopener">${label}</a>` : label}</span>`;
             })}</div>
             <div class="say">${r.state === 'running' ? html`${spinner} ` : ''}${r.say}</div>
+            ${this._detail(r)}
             ${r.problem ? html`<p class="note">${r.problem}</p>` : ''}
             <div class="acts" style="justify-content:flex-start">
                 ${r.pr?.url ? html`<a class="btn sm quiet" href=${safe(r.pr.url)} target="_blank" rel="noopener">PR #${r.pr.number}</a>` : ''}
@@ -289,6 +303,35 @@ class ReleaseTab extends LitElement {
             </div>
             ${this._rowError?.repo === r.repo ? html`<p class="error row-error" role="alert">${this._rowError.text}</p>` : ''}
         </div>`;
+    }
+
+    /** What's happening now: CI's checks, or the workflow's jobs and the step each is on; then what happened when. */
+    _detail(r) {
+        const mark = { passed: '✓', failed: '✗', ignored: '–', running: '' };
+        const took = (from, to) => {
+            const s = Math.max(0, Math.round(((to ? Date.parse(to) : Date.now()) - Date.parse(from)) / 1000));
+            return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`;
+        };
+        const run = r.runs?.[r.stage];
+        const showChecks = r.stage === 'ci' && r.checks?.length;
+        const showJobs = (r.stage === 'prepare' || r.stage === 'release') && run?.jobs?.length && r.state !== 'done';
+        const events = r.events ?? [];
+        return html`
+            ${showChecks ? html`<ul class="items">${r.checks.map(c => html`<li class=${c.state}>
+                <span class="m">${c.state === 'running' ? spinner : mark[c.state]}</span>
+                ${safe(c.url) ? html`<a href=${safe(c.url)} target="_blank" rel="noopener">${c.name}</a>` : c.name}
+                <span class="note">${c.state === 'ignored' ? 'cancelled or skipped: not counted' : c.startedAt ? (c.state === 'running' ? `running ${took(c.startedAt)}` : `took ${took(c.startedAt, c.completedAt)}`) : ''}</span>
+            </li>`)}</ul>` : ''}
+            ${showJobs ? html`<ul class="items">${run.jobs.map(j => {
+                const state = j.status !== 'completed' ? 'running' : j.conclusion === 'success' ? 'passed' : ['skipped', 'cancelled'].includes(j.conclusion) ? 'ignored' : 'failed';
+                return html`<li class=${state}><span class="m">${state === 'running' ? spinner : mark[state]}</span>
+                    ${safe(j.url) ? html`<a href=${safe(j.url)} target="_blank" rel="noopener">${j.name}</a>` : j.name}
+                    <span class="note">${state === 'running' ? `${j.step ? `${j.step}, ` : ''}step ${Math.min(j.done + 1, j.steps)} of ${j.steps}${j.startedAt ? `, ${took(j.startedAt)}` : ''}`
+                        : j.startedAt ? `took ${took(j.startedAt, j.completedAt)}` : ''}</span></li>`;
+            })}</ul>` : ''}
+            ${events.length ? html`<details class="timeline" ?open=${r.state === 'stopped'}><summary>What happened (${events.length})</summary>
+                <ol>${events.map(e => html`<li><time>${new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time> ${e.text}</li>`)}</ol>
+            </details>` : ''}`;
     }
 
     _repos(b) {
