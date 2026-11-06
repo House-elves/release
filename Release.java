@@ -33,7 +33,7 @@ import java.util.concurrent.Callable;
  * version, merged when CI is green, which starts the repo's own release workflows. It follows each release to Maven
  * Central and says how far it got.
  */
-@Command(name = "release", mixinStandardHelpOptions = true, version = "0.1.0", description = "Releases your GitHub repos from Elf Desk")
+@Command(name = "release", mixinStandardHelpOptions = true, version = "0.1.1", description = "Releases your GitHub repos from Elf Desk")
 public class Release implements Callable<Integer> {
 
     static final Path BOARD = Config.DIR.resolve("board").resolve("board.json");

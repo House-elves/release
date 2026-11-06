@@ -3,6 +3,10 @@
 What changed for you in each version of Releases, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.1.1
+
+- The patch button's label is readable.
+
 ## 0.1.0
 
 - New: lists the repos you can release (a `.github/project.yml`, in the accounts and organizations you choose) with

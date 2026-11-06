@@ -89,6 +89,7 @@ class ReleaseTab extends LitElement {
         .acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
         .acts button { font-variant-numeric: tabular-nums; }
         .acts button .k { color: var(--muted); font-weight: normal; margin-right: 4px; }
+        .acts button.primary .k { color: inherit; opacity: 0.75; }
         li.quiet { opacity: 0.7; }
         .flight { display: grid; gap: 8px; padding: 14px 18px; }
         .flight + .flight { border-top: 1px solid var(--line); }

@@ -1,7 +1,7 @@
 # A House Elves elf: what Elf Desk needs to install, set up and run Releases. AGENTS.md says what each field means.
 name: release
 title: Releases
-version: 0.1.0
+version: 0.1.1
 author: "@phillip-kruger"
 description: Lists the GitHub repos you can release (a .github/project.yml, as SmallRye and Quarkiverse have) with their versions, and releases one when you click patch, minor or major, following it to Maven Central.
 main: Release.java
