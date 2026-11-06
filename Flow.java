@@ -220,7 +220,8 @@ final class Flow {
               repository(owner: $owner, name: $name) {
                 pullRequest(number: $number) {
                   state merged mergedAt headRefOid mergeStateStatus reviewDecision createdAt
-                  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+                  commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 60) { nodes {
+                    __typename ... on CheckRun { name conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } } }
                 }
               }
             }""";
@@ -268,7 +269,7 @@ final class Flow {
                     return;
                 }
             }
-            say(r, "ci", "stopped", "CI failed on the release PR, so it isn't merged.");
+            say(r, "ci", "stopped", "CI failed on the release PR, so it isn't merged." + failedChecks(pr, r));
             return;
         }
         if (!checks.equals("SUCCESS") && !noChecks) {
@@ -295,6 +296,21 @@ final class Flow {
         }
         dropBranch(gh, repo, r);
         merged(r, Instant.now().toString());
+    }
+
+    /** The checks that failed, by name, for what the tab says (and their links, for it to show). */
+    static String failedChecks(JsonNode pr, ObjectNode r) {
+        List<String> names = new ArrayList<>();
+        ArrayNode links = r.putArray("failed");
+        for (JsonNode c : pr.path("commits").path("nodes").path(0).path("commit").path("statusCheckRollup").path("contexts").path("nodes")) {
+            boolean run = c.path("__typename").asText().equals("CheckRun");
+            String state = run ? c.path("conclusion").asText("") : c.path("state").asText("");
+            if (!List.of("FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED").contains(state)) continue;
+            String name = run ? c.path("name").asText() : c.path("context").asText();
+            names.add(name);
+            links.addObject().put("name", name).put("url", run ? c.path("detailsUrl").asText("") : c.path("targetUrl").asText(""));
+        }
+        return names.isEmpty() ? "" : " Failed: " + String.join(", ", names) + ".";
     }
 
     static void merged(ObjectNode r, String at) {

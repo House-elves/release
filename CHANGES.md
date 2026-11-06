@@ -3,6 +3,11 @@
 What changed for you in each version of Releases, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.2.1
+
+- A release that stopped at CI says which checks failed, with a link to each, and offers Start over (a new release
+  PR, the old one closed) next to Re-run failed CI, which only re-runs the same PR's failed jobs.
+
 ## 0.2.0
 
 - Fixed: a release's PR comes from a branch on the repo itself, not your fork. Quarkus's pre-release check refuses a

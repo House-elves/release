@@ -188,6 +188,21 @@ class ReleaseTab extends LitElement {
         }
     }
 
+    /** A stopped release, again from the start: the same version, a new PR (the desk's bar asks). */
+    async _again(r) {
+        this._doing = `${r.repo} release`;
+        this._rowError = null;
+        try {
+            await elf.act('release', { repo: r.repo, kind: r.kind, version: r.version, as: this._board?.as ?? r.as });
+            await this._load();
+            elf.run('follow').catch(() => {});
+        } catch (e) {
+            if (!e.cancelled) this._rowError = { repo: r.repo, text: e.message };
+        } finally {
+            this._doing = null;
+        }
+    }
+
     async _do(action, r) {
         this._doing = `${r.repo} ${action}`;
         this._rowError = null;
@@ -259,7 +274,12 @@ class ReleaseTab extends LitElement {
             ${r.problem ? html`<p class="note">${r.problem}</p>` : ''}
             <div class="acts" style="justify-content:flex-start">
                 ${r.pr?.url ? html`<a class="btn sm quiet" href=${safe(r.pr.url)} target="_blank" rel="noopener">PR #${r.pr.number}</a>` : ''}
-                ${r.state === 'stopped' && r.doneAt == null ? html`<button class="sm primary" ?disabled=${busy} @click=${() => this._do('retry', r)}>Try again</button>` : ''}
+                ${r.state === 'stopped' && r.doneAt == null && r.stage === 'ci' ? html`
+                    <button class="sm primary" ?disabled=${busy || !this._github} title="A new release PR of ${r.version}, from a branch on the repo; the old PR is closed"
+                        @click=${() => this._again(r)}>Start over</button>
+                    <button class="sm" ?disabled=${busy} title="Re-runs the failed CI jobs on the same PR" @click=${() => this._do('retry', r)}>Re-run failed CI</button>`
+                : r.state === 'stopped' && r.doneAt == null ? html`<button class="sm primary" ?disabled=${busy} @click=${() => this._do('retry', r)}>Try again</button>` : ''}
+                ${(r.failed ?? []).filter(c => safe(c.url)).map(c => html`<a class="btn sm quiet" href=${safe(c.url)} target="_blank" rel="noopener">${c.name}</a>`)}
                 ${active(r) && r.stage === 'ci' ? html`<button class="sm quiet" ?disabled=${busy} @click=${() => this._do('stop', r)}>Stop</button>` : ''}
                 ${!active(r) ? html`<button class="sm quiet" ?disabled=${busy} @click=${() => this._do('dismiss', r)}>Dismiss</button>` : ''}
             </div>
