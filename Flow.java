@@ -22,7 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * One release, from your click to Maven Central, in releases/<owner>__<name>.json for its tab. Starting it opens the
- * PR from your fork; following it (advance, again and again) waits for CI, merges, then watches the repo's release
+ * PR from a branch on the repo; following it (advance, again and again) waits for CI, merges, then watches the repo's release
  * workflows and Maven Central. Each step only moves forward, so following it from several places is harmless.
  *
  * stage: ci, prepare, release, central, done. state: running, waiting (on someone: a review), stopped, done.
@@ -81,11 +81,11 @@ final class Flow {
         System.out.println(r.path("repo").asText() + " " + r.path("version").asText() + ": " + say);
     }
 
-    // ---- starting: the version, the milestone, your fork, its branch with the new project.yml, the PR ----
+    // ---- starting: the version, the milestone, its branch with the new project.yml, the PR ----
 
     /**
      * Starts a release: what you confirmed (the version after the one project.yml says now) is checked again, then the
-     * PR goes up from your fork. Answers with the release as saved.
+     * PR goes up from a branch on the repo. Answers with the release as saved.
      */
     static ObjectNode start(Gh gh, String repo, String kind, String version) throws IOException {
         ObjectNode old = read(repo);
@@ -138,36 +138,53 @@ final class Flow {
             }
         }
 
-        // Your fork, as GitHub has it (made if you have none), a branch on it at the repo's head, and the edit.
-        JsonNode fork = gh.api("POST", "/repos/" + repo + "/forks", Gh.JSON.createObjectNode().put("default_branch_only", true));
-        String forkName = fork.path("full_name").asText();
-        if (!Repos.REPO.matcher(forkName).matches()) throw new IOException("GitHub didn't give a fork of " + repo);
-        for (int i = 0; i < 15 && gh.find("/repos/" + forkName) == null; i++) sleep(2);
+        // A branch on the repo itself, at its head, with the edit: release checks refuse a PR from a fork (Quarkus's
+        // pre-release does), and you can push to every repo it lists.
         String ref = "release-" + version;
-        if (gh.find("/repos/" + forkName + "/git/ref/heads/" + ref) != null) ref += "-" + Instant.now().getEpochSecond();
-        ObjectNode newRef = Gh.JSON.createObjectNode().put("ref", "refs/heads/" + ref).put("sha", head);
-        try {
-            gh.api("POST", "/repos/" + forkName + "/git/refs", newRef);
-        } catch (IOException e) {
-            // The fork doesn't have the repo's head yet: bring its branch up to date, then try again.
-            gh.api("POST", "/repos/" + forkName + "/merge-upstream", Gh.JSON.createObjectNode().put("branch", branch));
-            gh.api("POST", "/repos/" + forkName + "/git/refs", newRef);
-        }
+        if (gh.find("/repos/" + repo + "/git/ref/heads/" + ref) != null) ref += "-" + Instant.now().getEpochSecond();
+        gh.api("POST", "/repos/" + repo + "/git/refs", Gh.JSON.createObjectNode().put("ref", "refs/heads/" + ref).put("sha", head));
         String edited = Repos.edit(text, version, snapshot);
-        gh.api("PUT", "/repos/" + forkName + "/contents/.github/project.yml", Gh.JSON.createObjectNode()
+        gh.api("PUT", "/repos/" + repo + "/contents/.github/project.yml", Gh.JSON.createObjectNode()
                 .put("message", "Release " + version).put("branch", ref).put("sha", file.path("sha").asText())
                 .put("content", Base64.getEncoder().encodeToString(edited.getBytes(StandardCharsets.UTF_8))));
         JsonNode pr = gh.api("POST", "/repos/" + repo + "/pulls", Gh.JSON.createObjectNode()
-                .put("title", "Release " + version).put("base", branch)
-                .put("head", forkName.substring(0, forkName.indexOf('/')) + ":" + ref).put("maintainer_can_modify", true)
+                .put("title", "Release " + version).put("base", branch).put("head", ref)
                 .put("body", "Release " + version + " (" + kind + ", from " + m.group(3) + "): sets `.github/project.yml` to "
                         + version + ", next " + snapshot + ".\n\nOpened by the release elf on Elf Desk, which merges it when CI is green."));
-        r.put("fork", forkName).put("forkBranch", ref);
+        r.put("releaseBranch", ref);
         r.putObject("pr").put("number", pr.path("number").asInt()).put("url", pr.path("html_url").asText())
                 .put("at", Instant.now().toString());
+        // The release before, if it stopped with its PR open: this one takes its place.
+        if (old != null && old.path("pr").path("number").asInt() > 0) supersede(gh, repo, old, pr.path("number").asInt());
         say(r, "ci", "running", "Opened the PR. Waiting for CI.");
         write(r);
         return r;
+    }
+
+    /** Closes a stopped release's PR, if it's still open, pointing at the one that replaces it, and drops its branch. */
+    static void supersede(Gh gh, String repo, JsonNode old, int now) {
+        int n = old.path("pr").path("number").asInt();
+        try {
+            JsonNode pr = gh.get("/repos/" + repo + "/pulls/" + n);
+            if (!pr.path("state").asText().equals("open")) return;
+            gh.api("POST", "/repos/" + repo + "/issues/" + n + "/comments", Gh.JSON.createObjectNode().put("body", "Replaced by #" + now + "."));
+            gh.api("PATCH", "/repos/" + repo + "/pulls/" + n, Gh.JSON.createObjectNode().put("state", "closed"));
+            dropBranch(gh, repo, old);
+            System.out.println("Closed #" + n + ", replaced by #" + now);
+        } catch (IOException e) {
+            System.out.println("Couldn't close #" + n + ": " + e.getMessage());
+        }
+    }
+
+    /** The release's own branch on the repo, once it's merged or given up: GitHub may have deleted it already. */
+    static void dropBranch(Gh gh, String repo, JsonNode r) {
+        String ref = r.path("releaseBranch").asText("");
+        if (!ref.startsWith("release-")) return;
+        try {
+            gh.api("DELETE", "/repos/" + repo + "/git/refs/heads/" + ref, null);
+        } catch (IOException e) {
+            // gone already
+        }
     }
 
     /** The root pom's groupId and artifactId, to find the release on Maven Central; none for a repo without one. */
@@ -276,6 +293,7 @@ final class Flow {
             say(r, "ci", "waiting", "CI is green, but GitHub won't merge it yet: " + e.getMessage());
             return;
         }
+        dropBranch(gh, repo, r);
         merged(r, Instant.now().toString());
     }
 

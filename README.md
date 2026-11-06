@@ -7,8 +7,9 @@ Its tab lists the repos you can release, in the accounts and organizations you c
 that was released and how many commits its default branch has since. Click **patch**, **minor** or **major** (each
 shows the version it makes) and confirm in the desk's bar, and the rest happens on its own:
 
-1. On your fork (made if you have none), a branch sets `.github/project.yml` to the new version and the next
-   snapshot, and a PR of it opens on the repo. When the repo checks a milestone named after the version (SmallRye's
+1. A branch on the repo (`release-<version>`) sets `.github/project.yml` to the new version and the next snapshot,
+   and a PR of it opens. It's on the repo itself, not a fork: release checks refuse a PR from a fork (Quarkus's
+   pre-release does), and it only lists repos you can push to. When the repo checks a milestone named after the version (SmallRye's
    review does) and has none, it's made.
 2. When the PR's CI is green, it's merged. If CI fails, its failed jobs run again once (you can turn that off); if
    the repo needs a review, it waits for one.
@@ -26,7 +27,7 @@ it's merged. Releasing needs the GitHub elf on your desk.
 
 - **Reads**, through gh as your account: the repos of the accounts in its settings that you can push to, their
   `.github/project.yml`, tags and commits; for a release, its PR, CI, reviews and workflow runs; and Maven Central.
-- **Writes**, only when you click a release and confirm it: your fork, a branch on it, the PR, the version's
+- **Writes**, only when you click a release and confirm it: a branch on the repo, the PR, the version's
   milestone if one is needed, then the PR's merge when CI is green (and a re-run of failed CI jobs, once). Stop closes
   the PR, after you confirm it. What it found is kept in `~/.config/release/`.
 

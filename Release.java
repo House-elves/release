@@ -29,11 +29,11 @@ import java.util.concurrent.Callable;
 
 /**
  * release: lists the repos you can release (a .github/project.yml, in the accounts in its settings) with their
- * versions, and releases one when you click patch, minor or major and confirm: a PR from your fork that sets the
+ * versions, and releases one when you click patch, minor or major and confirm: a PR from a branch on the repo that sets the
  * version, merged when CI is green, which starts the repo's own release workflows. It follows each release to Maven
  * Central and says how far it got.
  */
-@Command(name = "release", mixinStandardHelpOptions = true, version = "0.1.1", description = "Releases your GitHub repos from Elf Desk")
+@Command(name = "release", mixinStandardHelpOptions = true, version = "0.2.0", description = "Releases your GitHub repos from Elf Desk")
 public class Release implements Callable<Integer> {
 
     static final Path BOARD = Config.DIR.resolve("board").resolve("board.json");
@@ -176,6 +176,7 @@ public class Release implements Callable<Integer> {
         if (r == null || !Flow.active(r)) throw new IllegalStateException("No release of " + repo + " is in progress");
         if (!r.path("stage").asText().equals("ci")) throw new IllegalStateException("It's merged already: the release workflows run on GitHub now");
         gh.api("PATCH", "/repos/" + repo + "/pulls/" + r.path("pr").path("number").asInt(), Gh.JSON.createObjectNode().put("state", "closed"));
+        Flow.dropBranch(gh, repo, r);
         Flow.say(r, "ci", "stopped", "You stopped it: the PR is closed, and nothing was released.");
         r.put("doneAt", Instant.now().toString());
         Flow.write(r);
