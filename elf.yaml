@@ -1,0 +1,88 @@
+# A House Elves elf: what Elf Desk needs to install, set up and run Releases. AGENTS.md says what each field means.
+name: release
+title: Releases
+version: 0.1.0
+author: "@phillip-kruger"
+description: Lists the GitHub repos you can release (a .github/project.yml, as SmallRye and Quarkiverse have) with their versions, and releases one when you click patch, minor or major, following it to Maven Central.
+main: Release.java
+config: ~/.config/release/config
+tools: [gh]
+
+# What it reads and writes, in plain words: the desk shows these before you install it, so they must be true and
+# complete. Name every place outside this machine it reaches, and say when it waits for your click.
+reads:
+  - The repos of the GitHub accounts and organizations in its settings that you can push to, with their .github/project.yml, version tags and commits, through gh as your account.
+  - For a release in progress, its PR's CI and reviews, the repo's workflow runs, and whether the version is on Maven Central (repo1.maven.org).
+writes:
+  - Its list of repos and the releases in progress, in ~/.config/release/.
+  - Only when you click patch, minor or major and confirm it in the desk's bar, as your gh account - a fork of the repo if you have none, a branch on your fork with .github/project.yml set to the new version, a PR of it on the repo, the version's milestone when the repo uses milestones and has none, and then, without asking again, a merge of that PR once its CI is green (and re-running its failed CI jobs once, if you leave that on). The merge starts the repo's own release workflows.
+  - Stop (before the merge) closes the release's PR, after you confirm it.
+
+settings:
+  - key: GITHUB_LOGIN
+    label: GitHub account
+    help: The account it reads the repos and releases as. Its token comes from gh (gh auth login).
+    kind: login
+    default: ${github-user}
+  - key: ACCOUNTS
+    label: Accounts and organizations
+    help: Comma-separated, like your login, smallrye, quarkiverse. It lists their repos that you can push to and that have a .github/project.yml.
+    kind: words
+    default: ${github-user}
+  - key: RETRY_CI
+    label: Re-run failed CI once
+    help: When a release PR's CI fails, re-run the failed jobs once before stopping, for flaky tests.
+    kind: bool
+    default: "true"
+
+commands:
+  board:
+    label: Refresh
+    args: [--board]
+  follow:
+    label: Follow the releases in progress
+    args: [--follow]
+  dry-run:
+    label: List the repos without saving
+    args: []
+
+dry-run: dry-run
+
+# Its tab (and dashboard card), drawn by ui/release.js in the desk's sandboxed frame, from board/board.json and
+# releases/. A release is followed by the follow command (the tab starts it), and moved on by each refresh too.
+tab:
+  page: ui/release.js
+  card: true
+refresh:
+  command: board
+  schedule: "Mon..Fri *-*-* 7..19:00"
+data: [board, releases]
+
+actions:
+  release:
+    label: Release a repo
+    args: [--action=release]
+    confirm: "Release {repo} {version} ({kind}), as {as}? It opens a PR from your fork setting .github/project.yml to {version}, merges it once CI is green, and that starts the release."
+    params:
+      repo: {pattern: "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}", max: 140}
+      kind: {one-of: [patch, minor, major]}
+      version: {pattern: "[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}", max: 20}
+      as: {pattern: "[A-Za-z0-9][A-Za-z0-9-]{0,38}", max: 39}
+  retry:
+    label: Try a stopped release again
+    args: [--action=retry]
+    confirm: "Try releasing {repo} again from where it stopped? When CI failed, its failed jobs run again."
+    params:
+      repo: {pattern: "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}", max: 140}
+  stop:
+    label: Stop a release before it's merged
+    args: [--action=stop]
+    confirm: "Stop releasing {repo}? Its PR is closed, and nothing is released."
+    params:
+      repo: {pattern: "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}", max: 140}
+  dismiss:
+    label: Take a finished release off the list
+    args: [--action=dismiss]
+    ask: false
+    params:
+      repo: {pattern: "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}", max: 140}
