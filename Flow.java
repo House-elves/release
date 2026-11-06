@@ -220,7 +220,7 @@ final class Flow {
               repository(owner: $owner, name: $name) {
                 pullRequest(number: $number) {
                   state merged mergedAt headRefOid mergeStateStatus reviewDecision createdAt
-                  commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 60) { nodes {
+                  commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { totalCount nodes {
                     __typename ... on CheckRun { name conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } } }
                 }
               }
@@ -259,13 +259,20 @@ final class Flow {
         r.with("pr").put("headSha", sha);
         // Every check, not GitHub's sum of them: that counts a cancelled job as failed, and some repos have one
         // that's cancelled on every run (a macOS runner there isn't any of). Done when none is still running.
-        JsonNode contexts = pr.path("commits").path("nodes").path(0).path("commit").path("statusCheckRollup").path("contexts").path("nodes");
+        JsonNode rollup = pr.path("commits").path("nodes").path(0).path("commit").path("statusCheckRollup");
+        JsonNode contexts = rollup.path("contexts").path("nodes");
         int running = 0, failed = 0, total = 0;
         for (JsonNode c : contexts) {
             total++;
             boolean run = c.path("__typename").asText().equals("CheckRun");
             if (run ? !c.path("status").asText().equals("COMPLETED") : List.of("PENDING", "EXPECTED").contains(c.path("state").asText())) running++;
             else if (FAILED.contains(run ? c.path("conclusion").asText("") : c.path("state").asText(""))) failed++;
+        }
+        // More checks than it read: it can't see them all, so only GitHub's own sum counts (a cancelled one as failed).
+        if (rollup.path("contexts").path("totalCount").asInt(0) > total) {
+            String state = rollup.path("state").asText("");
+            if (List.of("PENDING", "EXPECTED").contains(state)) running = Math.max(running, 1);
+            else if (!state.equals("SUCCESS")) failed = Math.max(failed, 1);
         }
         Instant opened = Instant.parse(pr.path("createdAt").asText(Instant.now().toString()));
         // No checks at all (yet): give CI ten minutes to start before taking it as none.

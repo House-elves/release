@@ -3,6 +3,10 @@
 What changed for you in each version of Releases, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.2.3
+
+- Behind the scenes: a PR with more than 100 checks merges only when GitHub says all of them passed.
+
 ## 0.2.2
 
 - Fixed: a release waits for all of its PR's checks to finish, and only a failed one stops it. A cancelled check
