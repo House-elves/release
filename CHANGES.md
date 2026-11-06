@@ -3,6 +3,11 @@
 What changed for you in each version of Releases, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.3.0
+
+- New: a major release keeps the line it leaves in a branch of its own first, like 2.x before 3.0.0, made from the
+  default branch as it is then, unless the repo has that branch already. The desk's bar says so before you confirm.
+
 ## 0.2.3
 
 - Behind the scenes: a PR with more than 100 checks merges only when GitHub says all of them passed.

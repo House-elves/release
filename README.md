@@ -7,6 +7,8 @@ Its tab lists the repos you can release, in the accounts and organizations you c
 that was released and how many commits its default branch has since. Click **patch**, **minor** or **major** (each
 shows the version it makes) and confirm in the desk's bar, and the rest happens on its own:
 
+1. For a major release (2.3.4 to 3.0.0), the line it leaves is kept first in a branch of its own, `2.x`, made from
+   the default branch as it is then, unless the repo has one already.
 1. A branch on the repo (`release-<version>`) sets `.github/project.yml` to the new version and the next snapshot,
    and a PR of it opens. It's on the repo itself, not a fork: release checks refuse a PR from a fork (Quarkus's
    pre-release does), and it only lists repos you can push to. When the repo checks a milestone named after the version (SmallRye's

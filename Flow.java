@@ -87,7 +87,7 @@ final class Flow {
      * Starts a release: what you confirmed (the version after the one project.yml says now) is checked again, then the
      * PR goes up from a branch on the repo. Answers with the release as saved.
      */
-    static ObjectNode start(Gh gh, String repo, String kind, String version) throws IOException {
+    static ObjectNode start(Gh gh, String repo, String kind, String version, String keep) throws IOException {
         ObjectNode old = read(repo);
         if (old != null && active(old)) throw new IllegalStateException(repo + " is releasing " + old.path("version").asText() + " already");
         JsonNode info = gh.get("/repos/" + repo);
@@ -106,6 +106,13 @@ final class Flow {
         String snapshot = Repos.snapshotAfter(version);
         String head = gh.get("/repos/" + repo + "/git/ref/heads/" + branch).path("object").path("sha").asText();
         if (!SHA.matcher(head).matches()) throw new IOException("Couldn't read " + repo + "'s " + branch);
+        // A major release: the line it leaves (2.x before 3.0.0) is kept in a branch of its own, made from the default
+        // branch as it is now, unless the repo has one already. What the bar said has to be what happens.
+        String line = Repos.line(m.group(3));
+        boolean lineExists = line != null && gh.find("/repos/" + repo + "/git/ref/heads/" + line) != null;
+        if (!Repos.keepSaying(kind, line, lineExists).equals(keep == null ? "" : keep)) {
+            throw new IllegalStateException(repo + "'s branches changed since you looked: refresh and look again");
+        }
 
         // Its workflows: the one that prepares (tags) and the one that releases (deploys), by their file names.
         String prepare = null, release = null;
@@ -138,6 +145,13 @@ final class Flow {
             }
         }
 
+        if (kind.equals("major") && line != null && !lineExists) {
+            gh.api("POST", "/repos/" + repo + "/git/refs", Gh.JSON.createObjectNode().put("ref", "refs/heads/" + line).put("sha", head));
+            r.put("line", line).put("lineMade", true);
+            System.out.println("Kept " + branch + " as " + line + " on " + repo);
+        } else if (kind.equals("major") && line != null) {
+            r.put("line", line);
+        }
         // A branch on the repo itself, at its head, with the edit: release checks refuse a PR from a fork (Quarkus's
         // pre-release does), and you can push to every repo it lists.
         String ref = "release-" + version;

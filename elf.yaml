@@ -1,7 +1,7 @@
 # A House Elves elf: what Elf Desk needs to install, set up and run Releases. AGENTS.md says what each field means.
 name: release
 title: Releases
-version: 0.2.3
+version: 0.3.0
 author: "@phillip-kruger"
 description: Lists the GitHub repos you can release (a .github/project.yml, as SmallRye and Quarkiverse have) with their versions, and releases one when you click patch, minor or major, following it to Maven Central.
 main: Release.java
@@ -15,7 +15,7 @@ reads:
   - For a release in progress, its PR's CI and reviews, the repo's workflow runs, and whether the version is on Maven Central (repo1.maven.org).
 writes:
   - Its list of repos and the releases in progress, in ~/.config/release/.
-  - Only when you click patch, minor or major and confirm it in the desk's bar, as your gh account - a branch on the repo (release-<version>) with .github/project.yml set to the new version, a PR of it, the version's milestone when the repo uses milestones and has none, and then, without asking again, a merge of that PR once its CI is green (and re-running its failed CI jobs once, if you leave that on). The merge starts the repo's own release workflows, and the branch is deleted. A new release of a repo closes the PR of one that stopped before it, saying which PR replaces it.
+  - Only when you click patch, minor or major and confirm it in the desk's bar, as your gh account - for a major release, a branch keeping the line it leaves (2.x before 3.0.0) when the repo has none, made from its default branch as it is then; a branch on the repo (release-<version>) with .github/project.yml set to the new version, a PR of it, the version's milestone when the repo uses milestones and has none, and then, without asking again, a merge of that PR once its CI is green (and re-running its failed CI jobs once, if you leave that on). The merge starts the repo's own release workflows, and the branch is deleted. A new release of a repo closes the PR of one that stopped before it, saying which PR replaces it.
   - Stop (before the merge) closes the release's PR and deletes its branch, after you confirm it.
 
 settings:
@@ -62,12 +62,14 @@ actions:
   release:
     label: Release a repo
     args: [--action=release]
-    confirm: "Release {repo} {version} ({kind}), as {as}? It opens a PR from a branch on the repo setting .github/project.yml to {version}, merges it once CI is green, and that starts the release."
+    confirm: "Release {repo} {version} ({kind}), as {as}?{keep} It opens a PR from a branch on the repo setting .github/project.yml to {version}, merges it once CI is green, and that starts the release."
     params:
       repo: {pattern: "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}", max: 140}
       kind: {one-of: [patch, minor, major]}
       version: {pattern: "[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}", max: 20}
       as: {pattern: "[A-Za-z0-9][A-Za-z0-9-]{0,38}", max: 39}
+      # A major release's first step, for the bar's words: the elf refuses it unless it's what it will do.
+      keep: {pattern: "( First it keeps the current line as a new branch, [0-9]{1,6}\\.x\\.)?", max: 80, optional: true}
   retry:
     label: Try a stopped release again
     args: [--action=retry]

@@ -32,6 +32,7 @@ final class Repos {
                     nameWithOwner url viewerPermission pushedAt
                     mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed
                     defaultBranchRef { name }
+                    lines: refs(refPrefix: "refs/heads/", first: 100, query: ".x") { nodes { name } }
                     project: object(expression: "HEAD:.github/project.yml") { ... on Blob { text } }
                   }
                 }
@@ -81,6 +82,12 @@ final class Repos {
         if (n.find()) o.put("nextVersion", n.group(3));
         ObjectNode next = nextVersions(version);
         if (next != null) o.set("next", next);
+        // A major release keeps the line it leaves in a branch of its own (2.x before 3.0.0): whether there's one.
+        String line = line(version);
+        if (line != null) {
+            o.put("line", line);
+            for (JsonNode b : r.path("lines").path("nodes")) if (b.path("name").asText().equals(line)) o.put("lineExists", true);
+        }
         return o;
     }
 
@@ -91,6 +98,18 @@ final class Repos {
         int a = Integer.parseInt(v.group(1)), b = Integer.parseInt(v.group(2)), c = Integer.parseInt(v.group(3));
         return Gh.JSON.createObjectNode().put("patch", a + "." + b + "." + (c + 1)).put("minor", a + "." + (b + 1) + ".0")
                 .put("major", (a + 1) + ".0.0");
+    }
+
+    /** The maintenance branch of a version's major line: 2.x for 2.3.4; null for one that isn't plain x.y.z. */
+    static String line(String version) {
+        Matcher v = VERSION.matcher(version);
+        return v.matches() ? v.group(1) + ".x" : null;
+    }
+
+    /** What the desk's bar says first for a major release: the branch it keeps the old line in, or nothing. */
+    static String keepSaying(String kind, String line, boolean exists) {
+        if (!kind.equals("major") || line == null || exists) return "";
+        return " First it keeps the current line as a new branch, " + line + ".";
     }
 
     /** The snapshot after a release: its next patch. */

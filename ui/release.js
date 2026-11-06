@@ -178,7 +178,8 @@ class ReleaseTab extends LitElement {
         this._doing = `${row.repo} release`;
         this._rowError = null;
         try {
-            await elf.act('release', { repo: row.repo, kind, version, as: this._board.as });
+            const keep = kind === 'major' && row.line && !row.lineExists ? ` First it keeps the current line as a new branch, ${row.line}.` : '';
+            await elf.act('release', { repo: row.repo, kind, version, as: this._board.as, keep });
             await this._load();
             elf.run('follow').catch(() => {});
         } catch (e) {
@@ -193,7 +194,9 @@ class ReleaseTab extends LitElement {
         this._doing = `${r.repo} release`;
         this._rowError = null;
         try {
-            await elf.act('release', { repo: r.repo, kind: r.kind, version: r.version, as: this._board?.as ?? r.as });
+            const row = this._board?.repos?.find(x => x.repo === r.repo);
+            const keep = r.kind === 'major' && row?.line && !row.lineExists ? ` First it keeps the current line as a new branch, ${row.line}.` : '';
+            await elf.act('release', { repo: r.repo, kind: r.kind, version: r.version, as: this._board?.as ?? r.as, keep });
             await this._load();
             elf.run('follow').catch(() => {});
         } catch (e) {
@@ -261,7 +264,8 @@ class ReleaseTab extends LitElement {
             <div class="line1">
                 <a class="title" href=${safe(r.url) ?? '#'} target="_blank" rel="noopener">${r.repo}</a>
                 <span class="version">${r.from} → <b>${r.version}</b></span>
-                <span class="note">${r.kind}, started ${ago(r.startedAt)}${done && r.doneAt ? `, done ${ago(r.doneAt)}` : ''}</span>
+                <span class="note">${r.kind}, started ${ago(r.startedAt)}${done && r.doneAt ? `, done ${ago(r.doneAt)}` : ''}${
+                    r.lineMade ? html`, kept the old line as <a href=${safe(`${r.url}/tree/${r.line}`) ?? '#'} target="_blank" rel="noopener">${r.line}</a>` : ''}</span>
             </div>
             <div class="steps" aria-label="How far it got">${STEPS.map(([s, label], i) => {
                 const cls = done || i < at ? 'done' : i === at ? (r.state === 'stopped' ? 'bad' : 'now') : '';
@@ -316,7 +320,7 @@ class ReleaseTab extends LitElement {
             <div class="acts">${active(flight) ? html`<span class="note">${spinner} releasing ${flight.version}</span>`
                 : !r.next ? html`<span class="note" title="Its version has a qualifier: set the next one in .github/project.yml by hand">release by hand</span>`
                 : !this._github ? '' : KINDS.map(k => html`<button class=${k === 'patch' && !quiet ? 'sm primary' : 'sm'} ?disabled=${!!this._doing}
-                    title="Release ${r.next[k]}" @click=${() => this._release(r, k)}>${busy ? '' : html`<span class="k">${k}</span>`}${r.next[k]}</button>`)}</div>
+                    title=${k === 'major' && r.line ? `Release ${r.next[k]}${r.lineExists ? ` (${r.line} is there already)` : `, keeping the current line as ${r.line}`}` : `Release ${r.next[k]}`} @click=${() => this._release(r, k)}>${busy ? '' : html`<span class="k">${k}</span>`}${r.next[k]}</button>`)}</div>
             ${this._rowError?.repo === r.repo && !flight ? html`<p class="error row-error" role="alert">${this._rowError.text}</p>` : ''}
         </li>`;
     }

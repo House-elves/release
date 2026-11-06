@@ -33,7 +33,7 @@ import java.util.concurrent.Callable;
  * version, merged when CI is green, which starts the repo's own release workflows. It follows each release to Maven
  * Central and says how far it got.
  */
-@Command(name = "release", mixinStandardHelpOptions = true, version = "0.2.3", description = "Releases your GitHub repos from Elf Desk")
+@Command(name = "release", mixinStandardHelpOptions = true, version = "0.3.0", description = "Releases your GitHub repos from Elf Desk")
 public class Release implements Callable<Integer> {
 
     static final Path BOARD = Config.DIR.resolve("board").resolve("board.json");
@@ -131,7 +131,7 @@ public class Release implements Callable<Integer> {
             ObjectNode answer = switch (action) {
                 case "release" -> {
                     if (!in.path("as").asText("").equalsIgnoreCase(config.githubLogin)) throw new IllegalArgumentException("Not the account in Releases' settings");
-                    yield Flow.start(gh, repo, in.path("kind").asText(""), in.path("version").asText(""));
+                    yield Flow.start(gh, repo, in.path("kind").asText(""), in.path("version").asText(""), in.path("keep").asText(""));
                 }
                 case "retry" -> retry(gh, config, repo);
                 case "stop" -> stop(gh, repo);
