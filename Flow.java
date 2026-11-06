@@ -257,10 +257,27 @@ final class Flow {
         }
         String sha = pr.path("headRefOid").asText();
         r.with("pr").put("headSha", sha);
-        String checks = pr.path("commits").path("nodes").path(0).path("commit").path("statusCheckRollup").path("state").asText("");
+        // Every check, not GitHub's sum of them: that counts a cancelled job as failed, and some repos have one
+        // that's cancelled on every run (a macOS runner there isn't any of). Done when none is still running.
+        JsonNode contexts = pr.path("commits").path("nodes").path(0).path("commit").path("statusCheckRollup").path("contexts").path("nodes");
+        int running = 0, failed = 0, total = 0;
+        for (JsonNode c : contexts) {
+            total++;
+            boolean run = c.path("__typename").asText().equals("CheckRun");
+            if (run ? !c.path("status").asText().equals("COMPLETED") : List.of("PENDING", "EXPECTED").contains(c.path("state").asText())) running++;
+            else if (FAILED.contains(run ? c.path("conclusion").asText("") : c.path("state").asText(""))) failed++;
+        }
         Instant opened = Instant.parse(pr.path("createdAt").asText(Instant.now().toString()));
-        boolean noChecks = checks.isEmpty() && opened.isBefore(Instant.now().minus(Duration.ofMinutes(10)));
-        if (checks.equals("FAILURE") || checks.equals("ERROR")) {
+        // No checks at all (yet): give CI ten minutes to start before taking it as none.
+        if (total == 0 && opened.isAfter(Instant.now().minus(Duration.ofMinutes(10)))) {
+            say(r, "ci", "running", "Waiting for CI to start on the release PR.");
+            return;
+        }
+        if (running > 0) {
+            say(r, "ci", "running", "CI is running on the release PR" + (failed > 0 ? " (" + failed + " failed so far)." : "."));
+            return;
+        }
+        if (failed > 0) {
             if (config.retryCi && !r.path("ciRetried").asBoolean()) {
                 int n = rerun(gh, repo, sha);
                 r.put("ciRetried", true);
@@ -270,10 +287,6 @@ final class Flow {
                 }
             }
             say(r, "ci", "stopped", "CI failed on the release PR, so it isn't merged." + failedChecks(pr, r));
-            return;
-        }
-        if (!checks.equals("SUCCESS") && !noChecks) {
-            say(r, "ci", "running", "CI is running on the release PR.");
             return;
         }
         String review = pr.path("reviewDecision").asText("");
@@ -305,13 +318,16 @@ final class Flow {
         for (JsonNode c : pr.path("commits").path("nodes").path(0).path("commit").path("statusCheckRollup").path("contexts").path("nodes")) {
             boolean run = c.path("__typename").asText().equals("CheckRun");
             String state = run ? c.path("conclusion").asText("") : c.path("state").asText("");
-            if (!List.of("FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED").contains(state)) continue;
+            if (!FAILED.contains(state)) continue;
             String name = run ? c.path("name").asText() : c.path("context").asText();
             names.add(name);
             links.addObject().put("name", name).put("url", run ? c.path("detailsUrl").asText("") : c.path("targetUrl").asText(""));
         }
         return names.isEmpty() ? "" : " Failed: " + String.join(", ", names) + ".";
     }
+
+    /** A check that failed: not one cancelled or skipped. */
+    static final List<String> FAILED = List.of("FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED");
 
     static void merged(ObjectNode r, String at) {
         r.put("mergedAt", at);
@@ -323,7 +339,7 @@ final class Flow {
     static int rerun(Gh gh, String repo, String sha) throws IOException {
         int n = 0;
         for (JsonNode run : gh.get("/repos/" + repo + "/actions/runs?head_sha=" + sha + "&per_page=50").path("workflow_runs")) {
-            if (List.of("failure", "timed_out", "cancelled").contains(run.path("conclusion").asText())) {
+            if (List.of("failure", "timed_out").contains(run.path("conclusion").asText())) {
                 gh.api("POST", "/repos/" + repo + "/actions/runs/" + run.path("id").asLong() + "/rerun-failed-jobs", Gh.JSON.createObjectNode());
                 n++;
             }

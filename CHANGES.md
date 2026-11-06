@@ -3,6 +3,11 @@
 What changed for you in each version of Releases, newest first. The desk shows the parts that are new when it offers
 you an update.
 
+## 0.2.2
+
+- Fixed: a release waits for all of its PR's checks to finish, and only a failed one stops it. A cancelled check
+  (quarkus-agent-mcp's macOS build is cancelled on every run) no longer counts as CI failing.
+
 ## 0.2.1
 
 - A release that stopped at CI says which checks failed, with a link to each, and offers Start over (a new release
